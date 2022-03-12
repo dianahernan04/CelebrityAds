@@ -1,0 +1,332 @@
+---
+title: "Capstone Project"
+author: "Diana Hernandez"
+date: "3/11/2022"
+output: word_document
+---
+
+#Looking into the data 
+```{r}
+data <- read.csv("capstone.csv", header = TRUE)
+head(data)
+attach(data)
+```
+
+The following refers to what each variable indicates: 
+1. Gender = Gender of the celebrity (Female or Male)
+2. Gen = Impression: What is your general impression of the ad?
+3. Per = Persuasiveness: How effective do you think this ad is in persuading potential consumers?
+4. Attn = Feature: How much did this ad draw your attention?
+5. Fav = Likability: Do you judge this ad favorably?
+6. Exp = Expertise: To what extent do you think the person in this ad have expertise in the ad’s product category?
+7. Relevancy = To what extent do you find the person/people in this ad to be (a) credible and trustworthy communicator(s)? (Yes or No)
+8. Cred = Credibility (Response variable of interest)
+
+#Looking into the dataset 
+```{r}
+head(data)
+```
+
+```{r}
+table(Relevancy)
+```
+
+#Process of making Gender into a factor 
+```{r}
+Gender = as.factor(Gender)
+#attach(data)
+is.factor(Gender)
+```
+
+```{r}
+table(Gender)
+```
+
+#Assigning levels to Gender variable 
+```{r}
+levels(Gender) <- c(0,1)
+```
+
+# The following indicates what the labels correspond to: 0 = Female and 1 = Male 
+```{r}
+table(Gender)
+```
+
+#Process of making Relevancy as a categorical variable 
+```{r}
+Relevancy = as.factor(Relevancy)
+is.factor(Relevancy)
+```
+
+# The following indicates what the labesls correpond to: 0 = No and 1 = Yes 
+```{r}
+table(Relevancy) 
+```
+
+#Attaching the data and making sure that Relevancy and Gender are categorical and were labeled properly 
+```{r}
+attach(data)
+is.factor(Relevancy)
+is.factor(Gender)
+table(Relevancy)
+table(Gender)
+```
+
+#Looking into the data again 
+```{r}
+head(data)
+```
+
+
+#Beggining the process of obtaining a final model. The following criterion/test were utilized in order to obtain a final model: VIF critertion, Cp mallow criterion, adjusted R^2 criterion, AIC selection, and BIC selection. 
+```{r}
+library(car)
+
+```
+
+#To begin, a regression model of all variables will be made. Cred (Crediblity) is my response of interest
+```{r}
+full.model <- lm(Cred~Gen + Pers + Attn + Fav + Exp + Gender + Relevancy, data=data)
+```
+
+#After computing the VIF test with a threshold of VIF 5, none of the variables exceed this value. This suggest that no serious multicollinearity is present. Therefore, we do not need to consider removing one of predictors in the model. Therefore, we could continue our analysis with the following variables: Gen, Pers, Attn, Fav, Exp, Gender, Relevancy. 
+```{r}
+predictor.model <- lm(Cred~Gen + Pers + Attn + Fav + Exp, data=data)
+vif(predictor.model)
+```
+
+
+```{r}
+library(leaps)
+```
+
+```{r}
+x = cbind(Gen, Pers, Attn, Fav, Exp, Gender, Relevancy)
+y = Cred
+result = leaps(x,y)
+which.min(result$Cp)
+```
+
+#According to Mallow's Cp criterion, the following variables were obtained as suggested variables: Fav, Exp, and Relevancy. This suggest that the variables Fav, Exp, and Relevancy had small Cp values, which accounts for both model fit and model complexity. 
+```{r}
+result$which[18,]
+```
+
+#To overcome the drawback of R^2 criterion, the adjusted R^2 criterion was utilized for all-subset comparison. The following variables were obtained according to R^2 criterion: Gen, Attn, Fav, Exp, Gender, Relevancy. This suggests that a model with these variables had the largest adjust R^2 value, which suggest that this model has the smallest MSE. 
+```{r}
+result = leaps(x, y, int=TRUE, method=c("adjr2"), nbest=10)
+which.max(result$adjr2)
+result$which[48,]
+```
+
+#AIC was also used for model comparison. The following variables were suggested according to the AIC criterion: Fav, Exp, and Relevancy. This is the same model obtained from the Mallow's Cp criterion. 
+```{r}
+step(full.model, direction = "both", k=2, trace=0)
+```
+
+#BIC was also used for model comparison. The following variables were suggested according to the AIC criterion: Fav and Exp. 
+```{r}
+step(full.model, direction="both", k=log(dim(data)[1]), trace = 0)
+```
+
+#Since four different models were obtained, according to VIF, Cp mallow, adjusted R^2, AIC criterion, and BIC criterion, the CV score was obtained for each of the models in order to analyze for a final model. 
+
+#The following depicts the models obtained by the criterion, which would be used to compute a cross-validation score. 
+```{r}
+vif.model <- lm(Cred ~ Gen + Pers + Attn + Fav + Exp + Gender + Relevancy, data=data)
+adj.r2model <- lm(Cred ~ Gen + Attn + Fav + Exp + Gender + Relevancy, data=data)
+aic.model <- lm(Cred ~ Fav + Exp + Relevancy, data=data)
+bic.model <- lm(Cred ~ Fav + Exp, data=data)
+```
+
+
+
+#Finding the CV score for the VIF
+```{r}
+n <- dim(data)[1]
+K <- 5 
+n.fold <- floor(n/K)
+n.shuffle <- sample(1:n, n, replace =FALSE)
+index.fold <- list() 
+```
+
+```{r}
+for(i in 1:K)
+{ 
+  if(i<K)
+  {
+    index.fold[[i]] <- n.shuffle[((i-1)*n.fold+1):(i*n.fold)]
+  }else
+    index.fold[[i]] <- n.shuffle[((K-1)*n.fold+1):n]
+  }
+```
+
+```{r}
+vif.score <- 0 
+for(i in 1:K)
+{
+  fit <-lm(Cred ~ Gen + Pers + Attn + Fav + Exp, data=data[-index.fold[[i]],])
+  pred <- predict(fit,data[index.fold[[i]],])
+  vif.score <- vif.score+(1/n)*sum((Cred[index.fold[[i]]]-pred)^2)
+}
+```
+
+```{r}
+vif.score
+```
+
+#Finding the CV score for the adj.r2 model 
+```{r}
+n <- dim(data)[1]
+K <- 5 
+n.fold <- floor(n/K)
+n.shuffle <- sample(1:n, n, replace =FALSE)
+index.fold <- list() 
+```
+
+```{r}
+for(i in 1:K)
+{ 
+  if(i<K)
+  {
+    index.fold[[i]] <- n.shuffle[((i-1)*n.fold+1):(i*n.fold)]
+  }else
+    index.fold[[i]] <- n.shuffle[((K-1)*n.fold+1):n]
+  }
+```
+
+```{r}
+adj.score <- 0 
+for(i in 1:K)
+{
+  fit <-lm(Cred ~ Gen + Attn + Fav + Exp + Gender + Relevancy,data=data[-index.fold[[i]],])
+  pred <- predict(fit,data[index.fold[[i]],])
+  adj.score <- adj.score+(1/n)*sum((Cred[index.fold[[i]]]-pred)^2)
+}
+```
+
+```{r}
+adj.score
+```
+
+#Finding the CV score for the AIC model 
+```{r}
+n <- dim(data)[1]
+K <- 5 
+n.fold <- floor(n/K)
+n.shuffle <- sample(1:n, n, replace =FALSE)
+index.fold <- list() 
+```
+
+```{r}
+for(i in 1:K)
+{ 
+  if(i<K)
+  {
+    index.fold[[i]] <- n.shuffle[((i-1)*n.fold+1):(i*n.fold)]
+  }else
+    index.fold[[i]] <- n.shuffle[((K-1)*n.fold+1):n]
+  }
+```
+
+```{r}
+aic.score <- 0 
+for(i in 1:K)
+{
+  fit <- lm(Cred ~ Fav + Exp + Relevancy,data=data[-index.fold[[i]],])
+  pred <- predict(fit,data[index.fold[[i]],])
+  aic.score <- aic.score+(1/n)*sum((Cred[index.fold[[i]]]-pred)^2)
+}
+```
+
+```{r}
+aic.score
+```
+
+#Finding rhe CV score for the BIC model 
+```{r}
+n <- dim(data)[1]
+K <- 5 
+n.fold <- floor(n/K)
+n.shuffle <- sample(1:n, n, replace =FALSE)
+index.fold <- list() 
+```
+
+```{r}
+for(i in 1:K)
+{ 
+  if(i<K)
+  {
+    index.fold[[i]] <- n.shuffle[((i-1)*n.fold+1):(i*n.fold)]
+  }else
+    index.fold[[i]] <- n.shuffle[((K-1)*n.fold+1):n]
+  }
+```
+
+```{r}
+bic.score <- 0 
+for(i in 1:K)
+{
+  fit <- lm(Cred ~ Fav + Exp,data=data[-index.fold[[i]],])
+  pred <- predict(fit,data[index.fold[[i]],])
+  bic.score <- bic.score+(1/n)*sum((Cred[index.fold[[i]]]-pred)^2)
+}
+```
+
+```{r}
+bic.score
+```
+
+
+#VIF scores obtained for each model 
+```{r}
+vif.score
+adj.score
+aic.score
+bic.score
+```
+
+#The selection of the final model was based on a low CV value as it indicates a stronger predictive power on independent observations. Thus, there is preference for the model obtained under the AIC criterion as it has the smallest CV score. 
+```{r}
+final.model <- lm(Cred ~ Fav + Exp + Relevancy, data=data)
+```
+
+#A model diagnosis of the aic model was done in order to ensure whether we should consider this as our final model. 
+
+#Model Diagnosis: Since we are treating the variables as quantitative given that the questions were based on a ranking scale, it is not unusual to see this pattern. The residuals plot for our final model does not violate the constant variance as the distribution of the residuals seem to be normally distributed. 
+```{r}
+predicted.final <- fitted.values(final.model)
+plot(predicted.final, resid(final.model), xlab="Predicted values", ylab="Residuals", main = "Variance of the Fitted Values vs. the Residual Values")
+abline(h=0)
+```
+
+#The normality assumption was also assessed for the final model with a normal probability plot. There does not seem to be a reason for concern as almost most of the distribution of residuals are within the normal probability line. 
+```{r}
+qqnorm(resid(final.model))
+qqline(resid(final.model))
+```
+
+#Therefore, my final model is the model obtained from the AIC selection process, which includes the following:aic.model <- lm(Cred ~ Fav + Exp + Relevancy, data=data)
+
+
+
+
+```{r}
+vif.model <- lm(Cred ~ Gen + Pers + Attn + Fav + Exp + Gender + Relevancy, data=data)
+adj.r2model <- lm(Cred ~ Gen + Attn + Fav + Exp + Gender + Relevancy, data=data)
+aic.model <- lm(Cred ~ Fav + Exp + Relevancy, data=data)
+bic.model <- lm(Cred ~ Fav + Exp, data=data)
+```
+
+```{r}
+summary(aic.model)
+```
+
+```{r}
+summary(final.model)
+```
+
+```{r}
+head(data)
+```
+
